@@ -8,14 +8,45 @@ import os
 model, class_names = load_model()
 stock_df = load_stock()
 
-CONFIDENCE_THRESHOLD = 0.60  # below this, treat as "unknown / not confident"
+CONFIDENCE_THRESHOLD = 0.60
+HIGH_CONFIDENCE_CUTOFF = 0.85  # above this, don't bother showing runner-up matches
+
+STATUS_COLORS = {
+    "In stock": "#16a34a",
+    "Low stock": "#d97706",
+    "Out of stock": "#dc2626",
+}
+
+CUSTOM_CSS = """
+.gradio-container {
+    max-width: 1000px !important;
+    margin: auto !important;
+}
+#title-block {
+    text-align: center;
+    padding: 10px 0 20px 0;
+}
+#result-card {
+    border-radius: 12px;
+    padding: 20px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+.status-badge {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 20px;
+    color: white;
+    font-weight: 600;
+    font-size: 0.9em;
+}
+"""
 
 
 def identify_and_check(image):
     if image is None:
         return "Please upload a photo.", None
 
-    # save the uploaded PIL image to a temp file, since classify_image expects a path
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
         image.save(tmp.name)
         tmp_path = tmp.name
@@ -26,34 +57,52 @@ def identify_and_check(image):
     top_name, top_confidence = results[0]
 
     if top_confidence < CONFIDENCE_THRESHOLD:
-        output_lines = [
-            f"⚠️ Not confident this matches a known medicine (best guess: {top_name}, only {top_confidence:.1%} confidence).",
-            "",
-            "This may be a product outside our current 53 trained medicines. Other close matches:",
-        ]
-        for name, conf in results[1:]:
-            output_lines.append(f"- {name} ({conf:.1%})")
-        return "\n".join(output_lines), None  # None means no valid name to reorder
+        html = f"""
+        <div id='result-card'>
+            <h3>⚠️ Not confident this matches a known medicine</h3>
+            <p>Best guess: <b>{top_name}</b> — only {top_confidence:.1%} confidence</p>
+            <p>This may be a product outside our current 53 trained medicines.</p>
+            <p><b>Other close matches:</b></p>
+            <ul>
+                {''.join(f"<li>{name} ({conf:.1%})</li>" for name, conf in results[1:])}
+            </ul>
+        </div>
+        """
+        return html, None
 
     availability = check_availability(top_name, stock_df)
+    color = STATUS_COLORS.get(availability["status"], "#64748b")
 
-    output_lines = [
-        f"**Identified: {top_name}** ({top_confidence:.1%} confidence)",
-        "",
-        f"Stock status: **{availability['status']}** ({availability['quantity']} units)",
-        "",
-        "Other possible matches:",
-    ]
-    for name, conf in results[1:]:
-        output_lines.append(f"- {name} ({conf:.1%})")
+    if top_confidence >= HIGH_CONFIDENCE_CUTOFF:
+        other_matches_html = ""
+    else:
+        other_matches_html = f"""
+        <p><b>Other possible matches:</b></p>
+        <ul>
+            {''.join(f"<li>{name} ({conf:.1%})</li>" for name, conf in results[1:])}
+        </ul>
+        """
 
-    return "\n".join(output_lines), top_name
+    html = f"""
+    <div id='result-card'>
+        <h2>💊 {top_name}</h2>
+        <p style='font-size: 1.1em;'>Confidence: <b>{top_confidence:.1%}</b></p>
+        <p>
+            <span class='status-badge' style='background:{color};'>
+                {availability['status']}
+            </span>
+            &nbsp; {availability['quantity']} units in stock
+        </p>
+        {other_matches_html}
+    </div>
+    """
+    return html, top_name
 
 
 def handle_reorder(medicine_name):
     if not medicine_name:
-        return "No medicine identified yet."
-    return add_to_reorder_list(medicine_name)
+        return "⚠️ No medicine identified yet."
+    return "✅ " + add_to_reorder_list(medicine_name)
 
 
 def view_reorder_list():
@@ -63,24 +112,33 @@ def view_reorder_list():
     return df.to_string(index=False)
 
 
-with gr.Blocks(title="Pharmacy Medicine Identifier") as demo:
-    gr.Markdown("# Pharmacy Medicine Identifier & Stock Checker")
-    gr.Markdown("Upload a photo of a medicine to identify it and check stock availability.")
+theme = gr.themes.Soft(
+    primary_hue="teal",
+    secondary_hue="blue",
+    font=[gr.themes.GoogleFont("Inter"), "sans-serif"],
+)
+
+with gr.Blocks(title="Pharmacy Medicine Identifier", theme=theme, css=CUSTOM_CSS) as demo:
+    with gr.Column(elem_id="title-block"):
+        gr.Markdown("# 💊 Pharmacy Medicine Identifier")
+        gr.Markdown("Upload a photo of a medicine to identify it and check stock availability.")
 
     with gr.Row():
-        with gr.Column():
-            image_input = gr.Image(type="pil", label="Upload medicine photo")
-            identify_btn = gr.Button("Identify & Check Stock", variant="primary")
-            result_output = gr.Markdown()
+        with gr.Column(scale=1):
+            image_input = gr.Image(type="pil", label="📷 Upload medicine photo", height=280)
+            identify_btn = gr.Button("🔍 Identify & Check Stock", variant="primary", size="lg")
+
+            result_output = gr.HTML()
             identified_name = gr.State()
 
-            reorder_btn = gr.Button("Add to Reorder List")
+            with gr.Row():
+                reorder_btn = gr.Button("➕ Add to Reorder List")
             reorder_output = gr.Textbox(label="Reorder status", interactive=False)
 
-        with gr.Column():
-            gr.Markdown("### Current Reorder List")
-            view_btn = gr.Button("Refresh Reorder List")
-            reorder_list_output = gr.Textbox(label="Reorder list", interactive=False, lines=15)
+        with gr.Column(scale=1):
+            gr.Markdown("### 📋 Current Reorder List")
+            view_btn = gr.Button("🔄 Refresh Reorder List")
+            reorder_list_output = gr.Textbox(label="Reorder List", interactive=False, lines=18)
 
     identify_btn.click(
         identify_and_check,
