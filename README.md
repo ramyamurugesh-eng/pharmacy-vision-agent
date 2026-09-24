@@ -28,7 +28,8 @@ In real-world testing, a photo of **Paracip-500** (not one of the 53 trained pro
 
 ## Data Sources
 
-- **Images**: "Pharmassist Dataset," Mendeley Data — ~5,000 images across 53 medicine classes, raw and augmented versions, all photographed indoors under LED lighting. Not included in this repo due to size (~1.8GB); download separately from Mendeley Data if you want to retrain.
+- **Images**: "Pharmassist Dataset," Mendeley Data — real-world photographs of used tablet blister packs, collected from personal and voluntary sources across Chennai, India (September–December 2025), under varying angles, orientations, lighting, and backgrounds. 2,050 original photographs plus 2,947 augmented versions (4,997 images total) across 53 medicine classes. Not included in this repo due to size (~1.8GB); download separately from [Mendeley Data](https://data.mendeley.com/datasets/zbnhmbbymd/1) if you want to retrain.
+
 - **Stock quantities**: Synthetic/simulated data generated for this project (`create_stock_data.py`) — not real pharmacy inventory. Quantities are randomly assigned for demonstration purposes.
 
 ## Technology Stack
@@ -64,8 +65,8 @@ python train_classifier.py
 
 - Closed-set classifier: only recognizes the 53 medicines it was trained on; will confidently misclassify anything else (see above).
 - Stock data is synthetic, not real pharmacy inventory.
-- Training images were all captured indoors under consistent LED lighting; performance on very different lighting/backgrounds is untested beyond the one real-world example described above.
-- A confidence threshold helps flag uncertain predictions but does not catch confidently wrong ones.
+- Training images vary in angle, orientation, lighting, and background (per the dataset's documentation), but real-world testing so far is limited to a small number of manual examples — broader testing across more products and conditions would give a clearer picture of real-world reliability.
+- A confidence threshold helps flag uncertain predictions but does not catch confidently wrong ones — as demonstrated by the Paracip-500 misclassification above, which occurred at 71.4% confidence, above the current threshold.
 
 ## Author
 
